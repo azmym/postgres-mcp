@@ -276,3 +276,31 @@ def test_test_connection_reports_failure_per_database(
     output = fresh_server.test_connection.fn("ro")
 
     assert "could not connect" in output
+
+
+def test_test_connection_reports_read_only_mode(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(fresh_server.psql, "find_psql", lambda *a, **k: "/bin/psql")
+    monkeypatch.setattr(
+        fresh_server.psql,
+        "run_sql",
+        lambda *a, **k: psql_mod.PsqlResult(True, "version\nPostgreSQL 18.6\n", "", 0),
+    )
+    output = fresh_server.test_connection.fn()
+
+    assert "ro (read-only)" in output
+
+
+def test_test_connection_reports_read_write_mode(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(fresh_server.psql, "find_psql", lambda *a, **k: "/bin/psql")
+    monkeypatch.setattr(
+        fresh_server.psql,
+        "run_sql",
+        lambda *a, **k: psql_mod.PsqlResult(True, "version\nPostgreSQL 18.6\n", "", 0),
+    )
+    output = fresh_server.test_connection.fn()
+
+    assert "rw (read-write)" in output

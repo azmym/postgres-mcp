@@ -138,8 +138,7 @@ ORDER BY indexname
 
 _CONNECTION_SQL = """
 SELECT version() AS version,
-       current_user AS username,
-       current_setting('transaction_read_only') AS read_only
+       current_user AS username
 """
 
 
@@ -203,8 +202,9 @@ def test_connection(database: str | None = None) -> str:
     """Check psql and connectivity, for one database or all of them.
 
     Reports the psql binary and version, the server version, the connected
-    user, and whether the session is read-only. Omit `database` to check every
-    configured entry, which also validates the config file.
+    user, and each database's configured read-only or read-write mode. Omit
+    `database` to check every configured entry, which also validates the
+    config file.
     """
     try:
         config = _get_config()

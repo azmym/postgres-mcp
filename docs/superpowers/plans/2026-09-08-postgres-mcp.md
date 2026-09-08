@@ -1818,7 +1818,12 @@ from pathlib import Path
 
 @pytest.fixture
 def config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Write a two-database config and point the server at it."""
+    """Write a three-database config and point the server at it.
+
+    The `withpw` entry carries a password_env so the secret-leak test has a
+    real secret to look for; without it that assertion is vacuous.
+    """
+    monkeypatch.setenv("PW", "super-secret-value")
     path = tmp_path / "config.toml"
     path.write_text(
         """
@@ -1829,6 +1834,12 @@ def config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         [databases.rw]
         dbname = "writable_db"
         read_only = false
+
+        [databases.withpw]
+        dbname = "secured_db"
+        user = "reader"
+        password_env = "PW"
+        read_only = true
         """
     )
     monkeypatch.setenv("POSTGRES_MCP_CONFIG", str(path))
@@ -1864,7 +1875,7 @@ def test_list_databases_reports_each_entry(fresh_server) -> None:  # type: ignor
     listing = fresh_server.list_databases.fn()
     names = {entry["name"] for entry in listing["databases"]}
 
-    assert names == {"ro", "rw"}
+    assert names == {"ro", "rw", "withpw"}
 
 
 def test_list_databases_reports_effective_read_only(fresh_server) -> None:  # type: ignore[no-untyped-def]
@@ -1874,14 +1885,14 @@ def test_list_databases_reports_effective_read_only(fresh_server) -> None:  # ty
     assert by_name["rw"]["read_only"] is False
 
 
-def test_list_databases_never_leaks_secrets(
-    fresh_server, monkeypatch: pytest.MonkeyPatch
-) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setenv("PW", "super-secret")
+def test_list_databases_never_leaks_secrets(fresh_server) -> None:  # type: ignore[no-untyped-def]
+    """The withpw entry has a real password in the environment; none of it,
+    nor the variable name holding it, may appear in the listing."""
     rendered = repr(fresh_server.list_databases.fn())
 
-    assert "super-secret" not in rendered
+    assert "super-secret-value" not in rendered
     assert "PGPASSWORD" not in rendered
+    assert "password_env" not in rendered
 
 
 def test_execute_sql_returns_rendered_rows(

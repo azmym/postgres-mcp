@@ -165,7 +165,9 @@ def build_env(db: Database, base_env: Mapping[str, str]) -> dict[str, str]:
 def build_input(sql: str, db: Database, *, read_only: bool) -> str:
     """Build psql's stdin: timeout, optional read-only wrapper, then the SQL."""
     body = sql.strip()
-    terminated = body.endswith(";")
+    # Decide termination from the scrubbed body: a semicolon inside a trailing
+    # comment is not a terminator. The text sent to psql stays the original.
+    terminated = guard.scrub(body).strip().endswith(";")
 
     lines = [f"SET statement_timeout = '{db.statement_timeout}';"]
     if read_only:

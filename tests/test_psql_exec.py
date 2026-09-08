@@ -128,6 +128,25 @@ def test_input_does_not_duplicate_an_existing_terminator() -> None:
     assert ";" not in lines
 
 
+def test_input_terminates_after_a_semicolon_inside_a_line_comment() -> None:
+    """A ; inside a trailing comment is not a terminator, so one is emitted."""
+    text = psql.build_input("SELECT 1 -- note;", make_db(), read_only=True)
+    lines = text.splitlines()
+    assert lines[lines.index("SELECT 1 -- note;") + 1] == ";"
+
+
+def test_input_no_extra_terminator_after_block_comment_semicolon() -> None:
+    text = psql.build_input("SELECT 1 /* c */;", make_db(), read_only=True)
+    lines = text.splitlines()
+    assert ";" not in lines
+
+
+def test_input_no_extra_terminator_after_trailing_comment() -> None:
+    text = psql.build_input("SELECT 1; -- note", make_db(), read_only=True)
+    lines = text.splitlines()
+    assert ";" not in lines
+
+
 def test_run_sql_rejects_write_in_read_only_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

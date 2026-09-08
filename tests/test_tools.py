@@ -149,3 +149,130 @@ def test_force_read_only_tightens_a_writable_database(
     fresh_server.execute_sql.fn("rw", "SELECT 1")
 
     assert captured["read_only"] is True
+
+
+def test_describe_schema_lists_tables(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        fresh_server.psql,
+        "run_sql",
+        lambda *a, **k: psql_mod.PsqlResult(True, "table,columns\nusers,4\n", "", 0),
+    )
+    output = fresh_server.describe_schema.fn("ro")
+
+    assert "users" in output
+
+
+def test_describe_schema_passes_schema_as_a_psql_variable(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    """Identifiers travel as psql variables, never string-formatted into SQL."""
+    captured: dict[str, object] = {}
+
+    def fake_run(db, sql, **kwargs):  # type: ignore[no-untyped-def]
+        captured["variables"] = kwargs.get("variables")
+        captured["sql"] = sql
+        return psql_mod.PsqlResult(True, "table,columns\n", "", 0)
+
+    monkeypatch.setattr(fresh_server.psql, "run_sql", fake_run)
+    fresh_server.describe_schema.fn("ro", schema="analytics")
+
+    assert captured["variables"] == {"schema": "analytics"}
+    assert "analytics" not in captured["sql"]
+
+
+def test_describe_schema_always_runs_read_only(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    """Even against a writable database, introspection only reads."""
+    captured: dict[str, object] = {}
+
+    def fake_run(db, sql, **kwargs):  # type: ignore[no-untyped-def]
+        captured["read_only"] = kwargs["read_only"]
+        return psql_mod.PsqlResult(True, "table,columns\n", "", 0)
+
+    monkeypatch.setattr(fresh_server.psql, "run_sql", fake_run)
+    fresh_server.describe_schema.fn("rw")
+
+    assert captured["read_only"] is True
+
+
+def test_describe_schema_with_table_returns_labelled_sections(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        fresh_server.psql,
+        "run_sql",
+        lambda *a, **k: psql_mod.PsqlResult(True, "a,b\n1,2\n", "", 0),
+    )
+    output = fresh_server.describe_schema.fn("ro", table="users")
+
+    assert "Columns" in output
+    assert "Constraints" in output
+    assert "Indexes" in output
+
+
+def test_describe_schema_rejects_invalid_identifier(fresh_server) -> None:  # type: ignore[no-untyped-def]
+    output = fresh_server.describe_schema.fn("ro", table="users; DROP TABLE x")
+
+    assert "invalid" in output.lower()
+
+
+def test_test_connection_reports_psql_and_server(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(fresh_server.psql, "find_psql", lambda *a, **k: "/bin/psql")
+    monkeypatch.setattr(
+        fresh_server.psql,
+        "run_sql",
+        lambda *a, **k: psql_mod.PsqlResult(
+            True, "version,current_user\nPostgreSQL 18.6,reader\n", "", 0
+        ),
+    )
+    output = fresh_server.test_connection.fn("ro")
+
+    assert "/bin/psql" in output
+    assert "PostgreSQL 18.6" in output
+
+
+def test_test_connection_checks_every_database_when_unspecified(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(fresh_server.psql, "find_psql", lambda *a, **k: "/bin/psql")
+    monkeypatch.setattr(
+        fresh_server.psql,
+        "run_sql",
+        lambda *a, **k: psql_mod.PsqlResult(True, "version\nPostgreSQL 18.6\n", "", 0),
+    )
+    output = fresh_server.test_connection.fn()
+
+    assert "ro" in output and "rw" in output
+
+
+def test_test_connection_reports_install_guidance_when_psql_missing(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    def raise_missing(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise psql_mod.PsqlNotFound("psql was not found. brew install libpq")
+
+    monkeypatch.setattr(fresh_server.psql, "find_psql", raise_missing)
+    output = fresh_server.test_connection.fn("ro")
+
+    assert "brew install libpq" in output
+
+
+def test_test_connection_reports_failure_per_database(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(fresh_server.psql, "find_psql", lambda *a, **k: "/bin/psql")
+    monkeypatch.setattr(
+        fresh_server.psql,
+        "run_sql",
+        lambda *a, **k: psql_mod.PsqlResult(
+            False, "", "could not connect to server", 2
+        ),
+    )
+    output = fresh_server.test_connection.fn("ro")
+
+    assert "could not connect" in output

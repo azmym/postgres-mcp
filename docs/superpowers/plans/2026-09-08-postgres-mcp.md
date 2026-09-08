@@ -113,7 +113,9 @@ packages = ["postgres_mcp"]
 3.11
 ```
 
-`.gitignore`:
+`.gitignore` (already present on the branch — write exactly this, so the
+overwrite is a no-op; `.superpowers/` is the execution scratch directory and
+must stay ignored):
 
 ```
 __pycache__/
@@ -121,6 +123,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 dist/
+.superpowers/
 ```
 
 `postgres_mcp/__init__.py` and `tests/__init__.py` are both empty files.

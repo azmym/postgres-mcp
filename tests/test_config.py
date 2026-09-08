@@ -1,6 +1,7 @@
 """Tests for config parsing, validation and read-only precedence."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -118,6 +119,50 @@ def test_env_flag_tightens_read_write_entry(tmp_path: Path) -> None:
     env = {"POSTGRES_MCP_READ_ONLY": "1"}
 
     assert cfg.load_config(path, env=env).get("x").read_only is True
+
+
+@pytest.mark.parametrize("bad", ['"false"', "0", '"true"'])
+def test_non_bool_read_only_is_an_error(tmp_path: Path, bad: str) -> None:
+    """A quoted string or int must not be silently coerced with bool()."""
+    path = write_config(
+        tmp_path, f'[databases.x]\ndbname = "app"\nread_only = {bad}\n'
+    )
+    with pytest.raises(cfg.ConfigError, match="read_only"):
+        cfg.load_config(path, env={})
+
+
+def test_bool_read_only_is_accepted(tmp_path: Path) -> None:
+    for value in ("true", "false"):
+        path = write_config(
+            tmp_path, f'[databases.x]\ndbname = "app"\nread_only = {value}\n'
+        )
+        assert cfg.load_config(path, env={}).get("x").read_only is (value == "true")
+
+
+def test_non_bool_defaults_read_only_is_an_error(tmp_path: Path) -> None:
+    path = write_config(
+        tmp_path,
+        """
+        [defaults]
+        read_only = "false"
+
+        [databases.x]
+        dbname = "app"
+        """,
+    )
+    with pytest.raises(cfg.ConfigError, match="read_only"):
+        cfg.load_config(path, env={})
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores permission bits")
+def test_unreadable_config_file_raises_config_error(tmp_path: Path) -> None:
+    path = write_config(tmp_path, '[databases.x]\ndbname = "app"\n')
+    os.chmod(path, 0o000)
+    try:
+        with pytest.raises(cfg.ConfigError, match="cannot read"):
+            cfg.load_config(path, env={})
+    finally:
+        os.chmod(path, 0o600)
 
 
 def test_dsn_with_discrete_fields_is_an_error(tmp_path: Path) -> None:

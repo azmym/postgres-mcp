@@ -2,6 +2,10 @@
 
 Exposes PostgreSQL databases as MCP tools, driven through the psql CLI.
 Run with: uvx --from "fastmcp[cli]" fastmcp run server.py
+
+`fastmcp run` calls mcp.run() directly and never reaches main(), so the
+--read-only flag is not parsed on that path. To force read-only there, set
+POSTGRES_MCP_READ_ONLY=1 instead.
 """
 from __future__ import annotations
 
@@ -66,6 +70,9 @@ def execute_sql(database: str, query: str, max_rows: int | None = None) -> str:
     except config_mod.ConfigError as exc:
         return f"Error: {exc}"
 
+    if max_rows is not None and max_rows < 1:
+        return f"Error: max_rows must be at least 1, got {max_rows}"
+
     try:
         outcome = psql.run_sql(db, query, read_only=db.read_only)
     except psql.GuardRejected as exc:
@@ -82,7 +89,7 @@ def execute_sql(database: str, query: str, max_rows: int | None = None) -> str:
         return f"psql failed (exit {outcome.returncode}):\n{outcome.stderr.strip()}"
 
     rendered = results.render_csv(
-        outcome.stdout, max_rows=max_rows or db.max_rows
+        outcome.stdout, max_rows=db.max_rows if max_rows is None else max_rows
     )
     if not rendered.text:
         return "(no rows)"
@@ -95,7 +102,9 @@ _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 
 _TABLE_LIST_SQL = """
 -- Aliases that are reserved words are double-quoted: bare `AS table`,
--- `AS column`, `AS default` and `AS type` are syntax errors in PostgreSQL.
+-- `AS column` and `AS default` are syntax errors in PostgreSQL. `type` is
+-- non-reserved, so `AS type` is valid SQL; quoting it here is defensive
+-- consistency with the other aliases, not a requirement.
 SELECT c.relname AS "table",
        CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view'
                       WHEN 'm' THEN 'matview' WHEN 'p' THEN 'partitioned'

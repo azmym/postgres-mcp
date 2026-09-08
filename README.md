@@ -103,7 +103,8 @@ Three independent layers:
 2. **A statement gate** parses your SQL, ignoring comments and string
    literals, and requires every statement to open with `SELECT`, `WITH`,
    `EXPLAIN`, `SHOW`, `TABLE` or `VALUES` and to contain no `INSERT`,
-   `UPDATE`, `DELETE` or `MERGE`. `WITH x AS (...) INSERT ...` is caught.
+   `UPDATE`, `DELETE`, `MERGE` or `INTO` (`SELECT ... INTO` creates a table).
+   `WITH x AS (...) INSERT ...` is caught.
    `EXPLAIN ANALYZE SELECT` is allowed; `EXPLAIN ANALYZE UPDATE` is not.
 3. **`BEGIN READ ONLY`** wraps the statements, so the server itself refuses
    writes even if the gate were fooled.

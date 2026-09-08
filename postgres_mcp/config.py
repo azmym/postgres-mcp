@@ -88,12 +88,16 @@ def load_config(
             raw = tomllib.load(handle)
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{resolved} is not valid TOML: {exc}") from exc
+    except OSError as exc:
+        raise ConfigError(f"cannot read {resolved}: {exc}") from exc
 
     forced = force_read_only or environ.get(
         "POSTGRES_MCP_READ_ONLY", ""
     ).strip().lower() in _TRUTHY
 
     defaults = raw.get("defaults", {})
+    if "read_only" in defaults:
+        _validate_read_only(defaults["read_only"], "defaults")
     entries = raw.get("databases", {})
     if not entries:
         raise ConfigError(f"no databases configured in {resolved}")
@@ -142,7 +146,7 @@ def _build_database(
     )
 
     declared = entry.get("read_only", defaults.get("read_only", True))
-    read_only = True if forced else bool(declared)
+    read_only = True if forced else _validate_read_only(declared, name)
 
     return Database(
         name=name,
@@ -174,5 +178,14 @@ def _validate_max_rows(value: Any, name: str) -> int:
         raise ConfigError(
             f"database {name!r} has invalid max_rows {value!r}; "
             "use a positive integer"
+        )
+    return value
+
+
+def _validate_read_only(value: Any, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ConfigError(
+            f"database {name!r} has invalid read_only {value!r}; "
+            "use true or false"
         )
     return value

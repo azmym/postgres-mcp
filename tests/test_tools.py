@@ -134,6 +134,34 @@ def test_execute_sql_honours_max_rows_override(
     assert "showing 5 of 30 rows" in output
 
 
+def test_execute_sql_rejects_max_rows_below_one(fresh_server) -> None:  # type: ignore[no-untyped-def]
+    output = fresh_server.execute_sql.fn("ro", "SELECT 1", max_rows=0)
+
+    assert "max_rows" in output
+
+
+def test_execute_sql_none_max_rows_uses_configured_default(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    from postgres_mcp import results as results_mod
+
+    captured: dict[str, object] = {}
+
+    def fake_render(csv_text, *, max_rows, max_bytes=100_000):  # type: ignore[no-untyped-def]
+        captured["max_rows"] = max_rows
+        return results_mod.Rendered(text="", row_count=0, truncated=False)
+
+    monkeypatch.setattr(fresh_server.results, "render_csv", fake_render)
+    monkeypatch.setattr(
+        fresh_server.psql,
+        "run_sql",
+        lambda *a, **k: psql_mod.PsqlResult(True, "n\n1\n", "", 0),
+    )
+    fresh_server.execute_sql.fn("ro", "SELECT 1")
+
+    assert captured["max_rows"] == 1000
+
+
 def test_force_read_only_tightens_a_writable_database(
     fresh_server, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # type: ignore[no-untyped-def]

@@ -330,5 +330,9 @@ automatically when nothing answers on `localhost:5432`.
 - The tokenizer is the load-bearing security component and hand-written.
   Layer 3 is what keeps a tokenizer bug from becoming a data-loss bug, which is
   why the read-only transaction is not treated as optional.
-- `psql` version differences in CSV quoting could affect parsing. Output is
-  passed through as text rather than parsed, which limits the exposure.
+- `results.py` parses psql's CSV with Python's `csv` module rather than passing
+  it through as opaque text. Correct row counting requires it: a quoted field
+  may contain newlines, so splitting on newlines both mis-reports the total and
+  can cut a row in half. Python's `csv` dialect and psql's `--csv` output are
+  both RFC 4180, so the exposure is a quoting divergence between them rather
+  than a parsing bug of our own.

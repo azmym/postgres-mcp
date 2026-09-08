@@ -293,3 +293,35 @@ def test_meta_command_line_reported_despite_carriage_return() -> None:
 
     assert not result.allowed
     assert result.statement == "\\! rm -rf /"
+
+
+def test_line_comment_after_semicolon_allowed_read_only() -> None:
+    """A trailing comment is not a statement, so it must not be gated."""
+    assert guard.check("SELECT 1; -- note", read_only=True).allowed
+
+
+def test_block_comment_after_semicolon_allowed_read_only() -> None:
+    assert guard.check("SELECT 1; /* block comment */", read_only=True).allowed
+
+
+def test_meta_command_survives_comment_filter_read_only() -> None:
+    """Dropping a comment-only fragment must not drop a \\! on the next line."""
+    result = guard.check("SELECT 1; -- note\n\\! rm -rf /", read_only=True)
+
+    assert not result.allowed
+    assert "meta-command" in result.reason
+
+
+def test_meta_command_survives_comment_filter_read_write() -> None:
+    result = guard.check("SELECT 1; -- note\n\\! rm -rf /", read_only=False)
+
+    assert not result.allowed
+    assert "meta-command" in result.reason
+
+
+def test_comment_only_input_allowed_read_only() -> None:
+    """A comment-only query has no statements and must not report nonsense."""
+    result = guard.check("-- nothing here", read_only=True)
+
+    assert result.allowed
+    assert result.reason is None

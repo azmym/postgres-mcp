@@ -146,6 +146,10 @@ def _split(sql: str, scrubbed: str) -> list[Statement]:
 
     Takes the scrubbed text as an argument so `check` can scrub once and have
     the meta-command scan and the statement gate reason about identical text.
+
+    A fragment whose scrubbed form is empty after stripping carries no SQL —
+    only comments or whitespace — and is dropped, so a trailing comment after
+    the final semicolon is not gated as an unparseable statement.
     """
     statements: list[Statement] = []
     start = 0
@@ -153,13 +157,13 @@ def _split(sql: str, scrubbed: str) -> list[Statement]:
     for index, char in enumerate(scrubbed):
         if char != ";":
             continue
-        if sql[start:index].strip():
+        if scrubbed[start:index].strip():
             statements.append(
                 Statement(sql[start:index].strip(), scrubbed[start:index].strip())
             )
         start = index + 1
 
-    if sql[start:].strip():
+    if scrubbed[start:].strip():
         statements.append(Statement(sql[start:].strip(), scrubbed[start:].strip()))
 
     return statements

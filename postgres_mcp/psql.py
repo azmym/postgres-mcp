@@ -165,14 +165,20 @@ def build_env(db: Database, base_env: Mapping[str, str]) -> dict[str, str]:
 def build_input(sql: str, db: Database, *, read_only: bool) -> str:
     """Build psql's stdin: timeout, optional read-only wrapper, then the SQL."""
     body = sql.strip()
-    if not body.endswith(";"):
-        body += ";"
+    terminated = body.endswith(";")
 
     lines = [f"SET statement_timeout = '{db.statement_timeout}';"]
     if read_only:
-        lines += ["BEGIN READ ONLY;", body, "ROLLBACK;"]
+        lines += ["BEGIN READ ONLY;", body]
+        if not terminated:
+            # Terminate on its own line so a trailing line comment cannot
+            # swallow the semicolon into the comment.
+            lines.append(";")
+        lines.append("ROLLBACK;")
     else:
         lines.append(body)
+        if not terminated:
+            lines.append(";")
 
     return "\n".join(lines) + "\n"
 

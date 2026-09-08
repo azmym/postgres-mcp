@@ -110,7 +110,22 @@ def test_input_sets_statement_timeout_in_read_write_mode_too() -> None:
 
 def test_input_terminates_an_unterminated_statement() -> None:
     text = psql.build_input("SELECT 1", make_db(), read_only=True)
-    assert "SELECT 1;" in text
+    lines = text.splitlines()
+    assert lines[lines.index("SELECT 1") + 1] == ";"
+
+
+def test_input_terminates_on_its_own_line_after_a_line_comment() -> None:
+    """A trailing line comment must not swallow the terminator into itself."""
+    text = psql.build_input("SELECT 1 -- note", make_db(), read_only=True)
+    lines = text.splitlines()
+    assert lines[lines.index("SELECT 1 -- note") + 1] == ";"
+
+
+def test_input_does_not_duplicate_an_existing_terminator() -> None:
+    text = psql.build_input("SELECT 1;", make_db(), read_only=True)
+    lines = text.splitlines()
+    assert "SELECT 1;" in lines
+    assert ";" not in lines
 
 
 def test_run_sql_rejects_write_in_read_only_mode(

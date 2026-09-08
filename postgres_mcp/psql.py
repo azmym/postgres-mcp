@@ -3,8 +3,13 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
+
+from postgres_mcp import guard
+from postgres_mcp.config import Database
 
 # Places psql commonly lives when it is installed but not on PATH. The libpq
 # entries matter most: `brew install libpq` is keg-only and does not link psql.
@@ -81,4 +86,144 @@ def install_guidance(platform_name: str, found_at: str | None = None) -> str:
         "    sudo apt install postgresql-client   # Debian, Ubuntu\n"
         "    sudo dnf install postgresql          # RHEL, Fedora\n"
         "    sudo pacman -S postgresql-libs       # Arch"
+    )
+
+
+_CONNECT_TIMEOUT_SECONDS = "10"
+
+
+@dataclass(frozen=True)
+class PsqlResult:
+    ok: bool
+    stdout: str
+    stderr: str
+    returncode: int
+
+
+class GuardRejected(Exception):
+    """Raised when the statement gate refuses the SQL."""
+
+    def __init__(self, result: guard.GuardResult) -> None:
+        super().__init__(result.reason or "statement rejected")
+        self.result = result
+
+
+def build_argv(
+    psql_path: str,
+    db: Database,
+    *,
+    read_only: bool,
+    variables: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Build the psql command line. Never includes a password."""
+    argv = [
+        psql_path,
+        "--no-psqlrc",  # a user's ~/.psqlrc must not change output format
+        "--csv",
+        "-v",
+        "ON_ERROR_STOP=1",
+    ]
+
+    if not read_only:
+        # Read-only mode gets atomicity from its explicit transaction wrapper.
+        argv.append("--single-transaction")
+
+    for key, value in (variables or {}).items():
+        argv += ["-v", f"{key}={value}"]
+
+    if db.dsn:
+        argv.append(db.dsn)
+        return argv
+
+    if db.host:
+        argv += ["-h", db.host]
+    if db.port:
+        argv += ["-p", str(db.port)]
+    if db.user:
+        argv += ["-U", db.user]
+    if db.dbname:
+        argv += ["-d", db.dbname]
+
+    return argv
+
+
+def build_env(db: Database, base_env: Mapping[str, str]) -> dict[str, str]:
+    """Build the child environment, carrying the password out of argv's reach."""
+    env = dict(base_env)
+    env["PGCONNECT_TIMEOUT"] = _CONNECT_TIMEOUT_SECONDS
+
+    if db.password_env:
+        password = base_env.get(db.password_env)
+        if password:
+            env["PGPASSWORD"] = password
+    if db.sslmode:
+        env["PGSSLMODE"] = db.sslmode
+
+    return env
+
+
+def build_input(sql: str, db: Database, *, read_only: bool) -> str:
+    """Build psql's stdin: timeout, optional read-only wrapper, then the SQL."""
+    body = sql.strip()
+    if not body.endswith(";"):
+        body += ";"
+
+    lines = [f"SET statement_timeout = '{db.statement_timeout}';"]
+    if read_only:
+        lines += ["BEGIN READ ONLY;", body, "ROLLBACK;"]
+    else:
+        lines.append(body)
+
+    return "\n".join(lines) + "\n"
+
+
+def run_sql(
+    db: Database,
+    sql: str,
+    *,
+    read_only: bool,
+    variables: Mapping[str, str] | None = None,
+    env: Mapping[str, str] | None = None,
+    psql_path: str | None = None,
+    timeout: float = 60.0,
+) -> PsqlResult:
+    """Gate the SQL, then run it through psql and return the raw result."""
+    verdict = guard.check(sql, read_only=read_only)
+    if not verdict.allowed:
+        raise GuardRejected(verdict)
+
+    base_env = os.environ if env is None else env
+    binary = psql_path or find_psql(base_env)
+
+    try:
+        completed = subprocess.run(
+            build_argv(binary, db, read_only=read_only, variables=variables),
+            input=build_input(sql, db, read_only=read_only),
+            env=build_env(db, base_env),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        # TimeoutExpired is a SubprocessError, not an OSError, so callers
+        # cannot catch it alongside ordinary spawn failures. Report it as a
+        # failed run instead of letting it escape as an unhandled exception.
+        return PsqlResult(
+            ok=False,
+            stdout="",
+            stderr=(
+                f"psql did not finish within {timeout:g}s and was terminated. "
+                f"The server-side statement_timeout is "
+                f"{db.statement_timeout}; a hang before that usually means the "
+                "connection itself is stalling."
+            ),
+            returncode=-1,
+        )
+
+    return PsqlResult(
+        ok=completed.returncode == 0,
+        stdout=completed.stdout,
+        stderr=completed.stderr,
+        returncode=completed.returncode,
     )

@@ -181,3 +181,15 @@ def test_backslash_inside_literal_not_a_meta_command() -> None:
     """A line starting with \\! inside a string literal is data, not a command."""
     sql = "SELECT '\n\\! echo hi\n'"
     assert guard.check(sql, read_only=False).allowed
+
+
+def test_select_into_rejected_read_only() -> None:
+    """SELECT ... INTO creates a table, so it is not a read query."""
+    result = guard.check("SELECT * INTO new_t FROM t", read_only=True)
+
+    assert not result.allowed
+    assert "INTO" in result.reason
+
+
+def test_select_into_allowed_when_not_read_only() -> None:
+    assert guard.check("SELECT * INTO new_t FROM t", read_only=False).allowed

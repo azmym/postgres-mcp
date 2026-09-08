@@ -101,9 +101,11 @@ def scrub(sql: str) -> str:
 
 _ALLOWED_LEAD = frozenset({"SELECT", "WITH", "EXPLAIN", "SHOW", "TABLE", "VALUES"})
 
-# The four verbs a CTE can reach behind an allowed opener. Everything else
-# that writes is already excluded by the leading-keyword allowlist.
-_WRITE_RE = re.compile(r"\b(INSERT|UPDATE|DELETE|MERGE)\b", re.IGNORECASE)
+# The writes an allowed opener can hide: the four DML verbs reachable through a
+# CTE, plus INTO, which turns a SELECT into a table-creating statement.
+# Everything else that writes is already excluded by the leading-keyword
+# allowlist.
+_WRITE_RE = re.compile(r"\b(INSERT|UPDATE|DELETE|MERGE|INTO)\b", re.IGNORECASE)
 
 # Row-locking reads. Checked before _WRITE_RE so "SELECT ... FOR UPDATE"
 # reports the lock rather than a misleading "contains UPDATE".

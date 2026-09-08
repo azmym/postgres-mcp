@@ -185,6 +185,13 @@ def test_non_positive_max_rows_is_an_error(tmp_path: Path) -> None:
         cfg.load_config(path, env={})
 
 
+def test_bool_max_rows_is_an_error(tmp_path: Path) -> None:
+    """bool is a subclass of int, so `max_rows = true` must not mean 1."""
+    path = write_config(tmp_path, '[databases.x]\ndbname = "app"\nmax_rows = true\n')
+    with pytest.raises(cfg.ConfigError, match="max_rows"):
+        cfg.load_config(path, env={})
+
+
 def test_get_unknown_database_lists_valid_names(tmp_path: Path) -> None:
     path = write_config(
         tmp_path, '[databases.alpha]\ndbname = "a"\n\n[databases.beta]\ndbname = "b"\n'

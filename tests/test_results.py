@@ -63,3 +63,15 @@ def test_byte_ceiling_keeps_at_least_the_header() -> None:
     rendered = results.render_csv(csv_text, max_rows=10, max_bytes=100)
 
     assert rendered.text.splitlines()[0] == "col"
+
+
+def test_null_and_empty_string_are_not_distinguished() -> None:
+    """Known, accepted limitation: the csv round-trip collapses NULL and ''.
+
+    psql writes NULL as an unquoted empty field and a zero-length string as a
+    quoted one; csv.reader reports both as '', so the rendered output cannot
+    tell them apart. See the spec's open-risks entry.
+    """
+    rendered = results.render_csv('a,b\n,""\n', max_rows=10)
+
+    assert rendered.text == "a,b\n,"

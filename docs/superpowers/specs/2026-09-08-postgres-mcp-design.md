@@ -333,6 +333,11 @@ automatically when nothing answers on `localhost:5432`.
 - `results.py` parses psql's CSV with Python's `csv` module rather than passing
   it through as opaque text. Correct row counting requires it: a quoted field
   may contain newlines, so splitting on newlines both mis-reports the total and
-  can cut a row in half. Python's `csv` dialect and psql's `--csv` output are
-  both RFC 4180, so the exposure is a quoting divergence between them rather
-  than a parsing bug of our own.
+  can cut a row in half. The cost is a loss of the NULL versus empty-string
+  distinction: psql writes NULL as an unquoted empty field and a zero-length
+  string as a quoted one, while `csv.reader` reports both as `''`, so the model
+  cannot tell them apart. This is a real fidelity loss rather than a quoting
+  divergence — both encodings are valid RFC 4180, and the distinction is lost
+  precisely because parsing succeeds. The loss is accepted rather than solved;
+  `--pset=null=<marker>` is the likely fix and should be verified against a
+  live database before it is adopted.

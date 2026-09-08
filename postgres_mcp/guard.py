@@ -84,6 +84,16 @@ def scrub(sql: str) -> str:
             blank(i, j)
             i = j
         elif sql[i] == "$":
+            # Postgres allows $ inside an identifier after the first character,
+            # and its longest-match lexer reads a$b$c as one identifier rather
+            # than an identifier followed by a dollar quote. Reading it as a
+            # quote here would blank everything to the closing tag -- to end of
+            # input when there is none -- hiding statement separators and write
+            # keywords from the gate. Erring toward not blanking is the safe
+            # direction: the gate then sees more text, never less.
+            if i and (sql[i - 1].isalnum() or sql[i - 1] in "_$"):
+                i += 1
+                continue
             match = _DOLLAR_TAG_RE.match(sql, i)
             if match is None:
                 i += 1
@@ -128,7 +138,15 @@ _META_REASON = (
 
 def split_statements(sql: str) -> list[Statement]:
     """Split on top-level semicolons, ignoring those inside literals."""
-    scrubbed = scrub(sql)
+    return _split(sql, scrub(sql))
+
+
+def _split(sql: str, scrubbed: str) -> list[Statement]:
+    """Split `sql` using semicolons located in its already-scrubbed copy.
+
+    Takes the scrubbed text as an argument so `check` can scrub once and have
+    the meta-command scan and the statement gate reason about identical text.
+    """
     statements: list[Statement] = []
     start = 0
 
@@ -149,14 +167,19 @@ def split_statements(sql: str) -> list[Statement]:
 
 def check(sql: str, *, read_only: bool) -> GuardResult:
     """Decide whether `sql` may run against a database in the given mode."""
-    meta = _find_meta_command(sql)
+    scrubbed = scrub(sql)
+    statements = _split(sql, scrubbed)
+
+    # Unconditional: \! runs a shell command on this host, which no server-side
+    # setting can constrain, so the ban precedes the read_only shortcut below.
+    meta = _find_meta_command(sql, scrubbed, statements)
     if meta is not None:
         return GuardResult(False, _META_REASON, meta)
 
     if not read_only:
         return GuardResult(True)
 
-    for statement in split_statements(sql):
+    for statement in statements:
         reason = _reject_reason(statement.scrubbed)
         if reason is not None:
             return GuardResult(False, reason, statement.text)
@@ -164,17 +187,32 @@ def check(sql: str, *, read_only: bool) -> GuardResult:
     return GuardResult(True)
 
 
-def _find_meta_command(sql: str) -> str | None:
-    """Return the offending line if any line opens a psql meta-command.
+def _find_meta_command(
+    sql: str, scrubbed: str, statements: list[Statement]
+) -> str | None:
+    """Return the offending text if `sql` opens a psql meta-command anywhere.
 
-    Scanning the scrubbed copy means a backslash inside a string literal is not
-    mistaken for a command; scrub preserves line structure, so line N of the
-    scrubbed text is line N of the original.
+    Two scans, because a backslash command reaches psql from two positions and
+    neither scan alone sees both:
+
+    - after a statement separator (`SELECT 1; \\! rm -rf /`), where it shares a
+      line with SQL and so never starts a line;
+    - on its own line inside a statement that has no terminating semicolon
+      (`SELECT 1\\n\\! rm -rf /`), where it is not a statement of its own.
+
+    Both read the scrubbed copy, so a backslash inside a string literal stays
+    data. Lines are split on "\\n" alone -- the only line break scrub preserves,
+    since a \\r or \\f inside a literal is blanked to a space -- which keeps the
+    scrubbed and original line lists the same length and index-aligned.
     """
-    original = sql.splitlines()
-    for index, line in enumerate(scrub(sql).splitlines()):
+    for statement in statements:
+        if statement.text.startswith("\\"):
+            return statement.text
+
+    original = sql.split("\n")
+    for index, line in enumerate(scrubbed.split("\n")):
         if line.lstrip().startswith("\\"):
-            return original[index].strip() if index < len(original) else line.strip()
+            return original[index].strip()
     return None
 
 

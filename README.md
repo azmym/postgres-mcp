@@ -159,10 +159,6 @@ Point `prod.user` at `mcp_reader` and a bug in this server still cannot write.
 - `max_rows` truncates output after the query has run. No `LIMIT` is injected
   into your SQL, so the reported total is the real one — add your own `LIMIT`
   if the query itself is expensive.
-- NULL and the empty string are not distinguished in query output: psql writes
-  NULL as an unquoted empty CSV field and a zero-length string as a quoted
-  one, but `results.py` parses with Python's `csv` module for correct row
-  counting, and `csv.reader` reports both as `''`. This is an accepted
-  limitation recorded in the design spec's open risks; `psql
-  --pset=null=<marker>` is the likely fix once a live database is available
-  to verify it against.
+- NULL renders as `[NULL]` in query output, distinguishing it from an empty
+  string. A column whose literal text is `[NULL]` is therefore ambiguous with
+  a real NULL.

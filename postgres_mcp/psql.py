@@ -120,6 +120,13 @@ def build_argv(
         psql_path,
         "--no-psqlrc",  # a user's ~/.psqlrc must not change output format
         "--csv",
+        # Without a marker, psql renders both NULL and the empty string as a
+        # bare empty CSV field, so the two are indistinguishable downstream.
+        # With one, NULL is instead indistinguishable from a column whose
+        # literal text is "[NULL]". That second collision is far rarer than the
+        # first, which is why the marker wins — but it is a trade, not a free
+        # improvement: the ambiguity is moved, not removed.
+        "--pset=null=[NULL]",
         # Quiet is mandatory: without it psql echoes a command tag (SET, BEGIN,
         # ROLLBACK) for each statement, and render_csv parses those tags as
         # data rows, corrupting the header and inflating the row count.

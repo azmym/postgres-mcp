@@ -30,6 +30,17 @@ def test_argv_always_includes_the_mandatory_flags() -> None:
     assert "ON_ERROR_STOP=1" in argv
 
 
+def test_argv_marks_null_so_it_is_distinct_from_the_empty_string() -> None:
+    """The NULL marker must survive argv construction; it is load-bearing.
+
+    Without it, psql renders NULL and '' identically and the distinction is
+    lost before results.py ever sees the output.
+    """
+    argv = psql.build_argv("/bin/psql", make_db(), read_only=True)
+
+    assert "--pset=null=[NULL]" in argv
+
+
 def test_argv_uses_dsn_as_positional_when_present() -> None:
     db = make_db(dsn="postgresql://me@localhost/app", dbname=None)
     argv = psql.build_argv("/bin/psql", db, read_only=True)

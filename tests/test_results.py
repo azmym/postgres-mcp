@@ -65,12 +65,16 @@ def test_byte_ceiling_keeps_at_least_the_header() -> None:
     assert rendered.text.splitlines()[0] == "col"
 
 
-def test_null_and_empty_string_are_not_distinguished() -> None:
-    """Known, accepted limitation: the csv round-trip collapses NULL and ''.
+def test_render_csv_treats_two_identical_empty_fields_identically() -> None:
+    """render_csv cannot tell two identical empty inputs apart.
 
-    psql writes NULL as an unquoted empty field and a zero-length string as a
-    quoted one; csv.reader reports both as '', so the rendered output cannot
-    tell them apart. See the spec's open-risks entry.
+    psql writes NULL as a bare empty field and '' as a bare empty field too,
+    so by the time render_csv sees them they are the same string and it has
+    nothing to distinguish. That is not a defect here: the NULL versus
+    empty-string distinction is preserved upstream by psql's null marker
+    (--pset=null=[NULL]), which turns NULL into the literal text "[NULL]"
+    before this code runs. This test guards that render_csv keeps treating
+    identical empty fields identically rather than inventing a distinction.
     """
     rendered = results.render_csv('a,b\n,""\n', max_rows=10)
 

@@ -58,6 +58,24 @@ def test_select_returns_rows_from_a_live_server() -> None:
     assert "1" in result.stdout
 
 
+def test_null_and_empty_string_are_distinguished_end_to_end() -> None:
+    """NULL, '' and a real value must survive the psql round-trip distinctly.
+
+    psql's --pset=null=[NULL] marks NULL; without the marker, NULL and ''
+    both render as bare empty CSV fields and the distinction is lost upstream
+    of results.py. This query is self-contained so it runs on any database.
+    """
+    result = psql.run_sql(
+        make_db(True),
+        "SELECT null::text AS a, ''::text AS b, 'x'::text AS c",
+        read_only=True,
+    )
+
+    assert result.ok, result.stderr
+    rendered = results.render_csv(result.stdout, max_rows=100)
+    assert rendered.text.splitlines() == ["a,b,c", "[NULL],,x"]
+
+
 def test_command_tags_are_suppressed_from_stdout() -> None:
     """psql must run with -q, or its command tags corrupt every result.
 

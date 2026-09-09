@@ -57,7 +57,7 @@ def test_execute_sql_empty_success_reports_completion(
     )
     output = fresh_server.execute_sql.fn("rw", "INSERT INTO t VALUES (1)")
 
-    assert output == "Statement completed. No rows returned."
+    assert output == "Statement completed (no result set)."
 
 
 def test_execute_sql_passes_read_only_from_config(

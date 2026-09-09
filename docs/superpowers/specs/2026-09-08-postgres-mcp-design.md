@@ -322,8 +322,10 @@ asserting on what would have been executed.
 - truncation trailer appears with correct counts; absent when not truncated
 - byte ceiling applies after row truncation
 
-One integration test runs against a live local Postgres and skips
-automatically when nothing answers on `localhost:5432`.
+The integration tests run against a live Postgres and skip automatically when
+a trivial query fails through the same libpq connection the tests themselves
+use, rather than when a TCP port probe fails — a port probe would wrongly run
+the suite against a TCP-only server the tests cannot actually reach.
 
 ## Open risks
 

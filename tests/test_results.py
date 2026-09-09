@@ -66,15 +66,15 @@ def test_byte_ceiling_keeps_at_least_the_header() -> None:
 
 
 def test_render_csv_treats_two_identical_empty_fields_identically() -> None:
-    """render_csv cannot tell two identical empty inputs apart.
+    """render_csv cannot tell an unquoted empty field from a quoted one.
 
-    psql writes NULL as a bare empty field and '' as a bare empty field too,
-    so by the time render_csv sees them they are the same string and it has
-    nothing to distinguish. That is not a defect here: the NULL versus
-    empty-string distinction is preserved upstream by psql's null marker
-    (--pset=null=[NULL]), which turns NULL into the literal text "[NULL]"
-    before this code runs. This test guards that render_csv keeps treating
-    identical empty fields identically rather than inventing a distinction.
+    The input is a row whose two fields are an unquoted empty and a quoted
+    empty (`""`); csv.reader reports both as '', so render_csv has nothing to
+    distinguish and re-emits them as bare empty fields. This guards render_csv's
+    own behaviour on the CSV forms it may receive, not psql's rendering: the
+    NULL versus empty-string distinction is preserved upstream by psql's null
+    marker (--pset=null=[NULL]), which turns NULL into the literal text
+    "[NULL]" before this code runs and is covered by the integration test.
     """
     rendered = results.render_csv('a,b\n,""\n', max_rows=10)
 

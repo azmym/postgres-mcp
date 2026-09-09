@@ -26,6 +26,7 @@ def test_argv_always_includes_the_mandatory_flags() -> None:
 
     assert "--no-psqlrc" in argv
     assert "--csv" in argv
+    assert "-q" in argv
     assert "ON_ERROR_STOP=1" in argv
 
 

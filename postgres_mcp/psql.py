@@ -120,6 +120,10 @@ def build_argv(
         psql_path,
         "--no-psqlrc",  # a user's ~/.psqlrc must not change output format
         "--csv",
+        # Quiet is mandatory: without it psql echoes a command tag (SET, BEGIN,
+        # ROLLBACK) for each statement, and render_csv parses those tags as
+        # data rows, corrupting the header and inflating the row count.
+        "-q",
         "-v",
         "ON_ERROR_STOP=1",
     ]

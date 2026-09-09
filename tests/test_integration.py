@@ -1,30 +1,14 @@
 """Integration tests against a real Postgres.
 
-Skipped automatically when psql is missing or nothing answers on localhost.
+Skipped automatically when psql is missing or no server answers the same
+connection the tests themselves use.
 """
 from __future__ import annotations
 
-import socket
-
 import pytest
 
-from postgres_mcp import psql
+from postgres_mcp import psql, results
 from postgres_mcp.config import Database
-
-
-def _postgres_reachable() -> bool:
-    try:
-        psql.find_psql()
-    except psql.PsqlNotFound:
-        return False
-    with socket.socket() as sock:
-        sock.settimeout(0.5)
-        return sock.connect_ex(("localhost", 5432)) == 0
-
-
-pytestmark = pytest.mark.skipif(
-    not _postgres_reachable(), reason="no local Postgres on localhost:5432"
-)
 
 
 def make_db(read_only: bool) -> Database:
@@ -37,11 +21,61 @@ def make_db(read_only: bool) -> Database:
     )
 
 
+def _postgres_reachable() -> bool:
+    """True when a live server answers the same connection the tests use.
+
+    The tests connect through libpq defaults (make_db sets no host, port or
+    user), so checking that TCP port 5432 accepts a connection is not enough:
+    a server reachable only over TCP — or one that needs credentials the
+    environment does not supply — would pass a port probe yet fail every test.
+    Run a trivial query with the same settings instead and skip when it fails.
+    """
+    try:
+        psql.find_psql()
+    except psql.PsqlNotFound:
+        return False
+
+    try:
+        result = psql.run_sql(make_db(True), "SELECT 1", read_only=True)
+    except (psql.GuardRejected, OSError):
+        return False
+    return result.ok
+
+
+pytestmark = pytest.mark.skipif(
+    not _postgres_reachable(),
+    reason=(
+        "no reachable PostgreSQL server; point the suite at one with libpq "
+        "variables, e.g. PGHOST=localhost PGUSER=admin PGPASSWORD=admin"
+    ),
+)
+
+
 def test_select_returns_rows_from_a_live_server() -> None:
     result = psql.run_sql(make_db(True), "SELECT 1 AS n", read_only=True)
 
     assert result.ok, result.stderr
     assert "1" in result.stdout
+
+
+def test_command_tags_are_suppressed_from_stdout() -> None:
+    """psql must run with -q, or its command tags corrupt every result.
+
+    Without -q, psql echoes SET/BEGIN/ROLLBACK into stdout and render_csv
+    parses them as data rows: the header becomes "SET" and the row count
+    balloons. generate_series gives a known 3-row result on any database.
+    """
+    result = psql.run_sql(
+        make_db(True), "SELECT generate_series(1, 3) AS n", read_only=True
+    )
+
+    assert result.ok, result.stderr
+    for tag in ("SET", "BEGIN", "ROLLBACK"):
+        assert tag not in result.stdout.splitlines()
+
+    rendered = results.render_csv(result.stdout, max_rows=100)
+    assert rendered.row_count == 3
+    assert rendered.text.splitlines()[0] == "n"
 
 
 def test_read_only_transaction_blocks_a_write_at_the_server() -> None:

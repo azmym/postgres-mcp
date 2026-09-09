@@ -92,7 +92,7 @@ def execute_sql(database: str, query: str, max_rows: int | None = None) -> str:
         outcome.stdout, max_rows=db.max_rows if max_rows is None else max_rows
     )
     if not rendered.text:
-        return "(no rows)"
+        return "Statement completed. No rows returned."
     return rendered.text
 
 

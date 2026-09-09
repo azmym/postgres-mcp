@@ -33,6 +33,27 @@ uv venv && uv pip install -e ".[dev]"
 uv run pytest
 ```
 
+## Integration tests
+
+`tests/test_integration.py` runs against a real PostgreSQL server and skips
+cleanly when none is reachable. Point it at a server with the standard libpq
+variables:
+
+```bash
+PGHOST=localhost PGUSER=admin PGPASSWORD=admin uv run pytest
+```
+
+Or spin up a throwaway server with Docker:
+
+```bash
+docker run --rm -d --name pg-mcp-test \
+  -e POSTGRES_PASSWORD=admin -p 5432:5432 postgres:18
+PGHOST=localhost PGUSER=postgres PGPASSWORD=admin uv run pytest
+docker rm -f pg-mcp-test
+```
+
+Without a server the integration tests skip; the unit tests always run.
+
 ## Configure
 
 Create `~/.config/postgres-mcp/config.toml` (override the location with

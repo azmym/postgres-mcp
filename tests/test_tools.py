@@ -46,6 +46,20 @@ def test_execute_sql_returns_rendered_rows(
     assert "1" in output
 
 
+def test_execute_sql_empty_success_reports_completion(
+    fresh_server, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    """A successful write emits no output; say so without implying failure."""
+    monkeypatch.setattr(
+        fresh_server.psql,
+        "run_sql",
+        lambda *a, **k: psql_mod.PsqlResult(True, "", "", 0),
+    )
+    output = fresh_server.execute_sql.fn("rw", "INSERT INTO t VALUES (1)")
+
+    assert output == "Statement completed. No rows returned."
+
+
 def test_execute_sql_passes_read_only_from_config(
     fresh_server, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # type: ignore[no-untyped-def]

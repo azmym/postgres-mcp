@@ -55,8 +55,11 @@ does and what it returns.
 
 ## Where the architecture lives
 
-`docs/superpowers/specs/2026-09-08-postgres-mcp-design.md` holds the design and
-its open risks. Read it before touching the read-only path.
+The README's "How read-only is enforced" section is the current description of
+the three layers and the recommended fourth. The code is the authority beyond
+that: `postgres_mcp/guard.py` for the statement gate, `postgres_mcp/psql.py`
+for the transaction wrapper and process construction. Read both before
+touching the read-only path.
 
 ## The read-only path
 

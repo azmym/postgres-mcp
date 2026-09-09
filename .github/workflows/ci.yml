@@ -46,14 +46,16 @@ jobs:
       PGPASSWORD: postgres
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install the psql client
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends postgresql-client
 
-      - uses: astral-sh/setup-uv@v10
+      # Pinned to an exact release: setup-uv publishes floating major tags only
+      # up to v6, so `@v10` does not resolve even though v10.0.1 is current.
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           python-version: ${{ matrix.python-version }}
 

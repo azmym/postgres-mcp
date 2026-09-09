@@ -1,7 +1,7 @@
 """Read-only statement gate for SQL headed to psql.
 
 Pure functions over strings: no I/O, no config knowledge. This is layer 2 of
-the three-layer read-only defence in the design spec. The BEGIN READ ONLY
+the three-layer read-only defence described in the README. The BEGIN READ ONLY
 wrapper applied in psql.py (layer 3) is what keeps a bug here from becoming a
 data-loss bug.
 """

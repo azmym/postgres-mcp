@@ -19,11 +19,16 @@ read-only guarantee to come from the server and from PostgreSQL itself, not
 from the model's good behaviour. A prompt-injection payload in a web page or a
 table comment cannot talk its way into a write.
 
-![Diagram of the three-layer read-only defence: layer one bans psql backslash
-commands so there is no shell or file access, layer two whitelists statement
-openers (SELECT, WITH, EXPLAIN and three more), layer three wraps every query in
-BEGIN READ ONLY so PostgreSQL itself refuses writes, with a fourth layer of a
-read-only database role.](assets/infographic.png)
+![The four-layer read-only defence, left to right: an AI assistant's query
+first meets layer one, a meta-command ban that blocks psql backslash commands
+such as \! to prevent shell execution and file access; then layer two, a
+statement gate validating SQL against an allowlist of openers including SELECT,
+WITH, EXPLAIN, TABLE and VALUES; then layer three, where the query is wrapped
+in a BEGIN READ ONLY transaction so PostgreSQL itself rejects any write; and
+finally layer four, a read-only database role granting only SELECT, configured
+in the database rather than in this server. Underneath, a zero-escalation note:
+read-only status is fixed in configuration, so the model cannot escalate its
+own privileges.](assets/infographic.png)
 
 ## Requirements
 
@@ -123,7 +128,20 @@ config file. `POSTGRES_MCP_READ_ONLY=1` does the same.
 
 ## How read-only is enforced
 
-Three independent layers, plus a fourth you should add yourself.
+Three independent layers, plus a fourth you should add yourself. The diagram
+above counts all four; this one shows what the three enforced layers actually
+check, including the keywords each one permits and blocks.
+
+![The three enforced layers stacked as a shield. Layer one, the psql
+meta-command ban, blocks backslash commands to prevent shell execution and
+unauthorized local file access. Layer two, the statement gate, enforces a
+keyword allowlist of SELECT, WITH, EXPLAIN and SHOW while scanning for hidden
+write verbs, listing INSERT, UPDATE, DELETE, DROP, MERGE, INTO, SELECT INTO and
+EXPLAIN ANALYZE UPDATE as blocked. Layer three, the PostgreSQL transaction
+lock, wraps all queries in BEGIN READ ONLY so refusal happens at the database.
+Alongside: zero privilege escalation, because tools do not accept read-only
+arguments, and a recommended restricted SQL role as a final layer independent
+of this server's code.](assets/Securing_SQL_Databases_for_AI.png)
 
 1. **Backslash commands are always rejected.** `\!` runs a shell command on
    this host and never reaches the server, and `\copy` and `\o` write local

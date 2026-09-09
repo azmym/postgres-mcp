@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose something new
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: Describe the problem you are trying to solve, not the solution. What can you not do today, and why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Anything that shaped this — a workflow, a database setup, a limitation you hit.
+    validations:
+      required: false
+  - type: checkboxes
+    id: read-only-path
+    attributes:
+      label: Read-only enforcement
+      description: This changes how the change gets reviewed.
+      options:
+        - label: This change touches the read-only enforcement path (`postgres_mcp/guard.py` or the wrapper in `postgres_mcp/psql.py`).
+          required: false

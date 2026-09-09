@@ -1,8 +1,18 @@
+<div align="center">
+
 # postgres-mcp
 
 An MCP server that lets an AI assistant run SQL against PostgreSQL through the
-`psql` command-line client. You configure several databases at once, and any of
-them can be marked read-only so that only read queries ever run against it.
+`psql` command-line client.
+
+[![CI](https://github.com/azmym/postgres-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/azmym/postgres-mcp/actions/workflows/ci.yml)
+![Python 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+</div>
+
+You configure several databases at once, and any of them can be marked
+read-only so that only read queries ever run against it.
 
 It exists for one reason: when you hand a model a database, you want the
 read-only guarantee to come from the server and from PostgreSQL itself, not
@@ -196,3 +206,12 @@ each case. On macOS the usual cause is `brew install libpq` without
 `brew link --force`, which installs psql but leaves it off your PATH; the error
 tells you the exact `export PATH=...` line to add. Set `POSTGRES_MCP_PSQL` to
 skip the search entirely.
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). The project
+is MIT-licensed ([LICENSE](LICENSE)).
+
+Security is the whole point of this server, so [SECURITY.md](SECURITY.md) is
+worth reading: it documents the threat model, what counts as a vulnerability,
+and how to report one privately.

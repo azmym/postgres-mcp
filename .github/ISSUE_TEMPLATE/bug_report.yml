@@ -1,0 +1,62 @@
+name: Bug report
+description: Report something that is broken or behaves unexpectedly
+labels: [bug]
+body:
+  - type: textarea
+    id: psql-version
+    attributes:
+      label: psql version
+      description: Output of `psql --version`.
+      placeholder: "psql (PostgreSQL) 18.6"
+    validations:
+      required: true
+  - type: input
+    id: server-version
+    attributes:
+      label: PostgreSQL server version
+      description: The version of the server you are connecting to (e.g. from `test_connection` or `SELECT version()`).
+      placeholder: "PostgreSQL 18.6"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: OS and how psql was installed, if relevant.
+      placeholder: "macOS 15, psql via `brew install libpq`"
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config.toml
+      description: The `[defaults]` and `[databases.<name>]` entries involved, **with secrets redacted**. `password_env` names a variable, never the value — leave it as the variable name. Remove any `dsn` password and any real host/credentials.
+      render: toml
+    validations:
+      required: false
+  - type: input
+    id: tool
+    attributes:
+      label: Which tool
+      description: The tool you called — `execute_sql`, `describe_schema`, `list_databases`, or `test_connection`.
+      placeholder: "execute_sql"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What happened vs. what you expected
+      description: The query or call you made, the result you got, and what you expected instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: test-connection
+    attributes:
+      label: Does `test_connection` succeed?
+      description: Run `test_connection` (no arguments) against the same configuration. This resolves most problems on its own.
+      options:
+        - "Yes"
+        - "No"
+        - "Did not try"
+    validations:
+      required: true

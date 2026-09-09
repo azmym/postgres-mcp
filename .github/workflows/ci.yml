@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    # The integration tests shell out to `psql` and connect over libpq, so the
+    # job needs both a real PostgreSQL server AND the psql client binary. The
+    # service container provides the server; the client is installed in a step
+    # below. Without both, the 10 integration tests skip — the exact blind spot
+    # this workflow exists to prevent.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        # Wait for the server to actually accept connections before the tests
+        # start. A bare `sleep` would race startup and fail intermittently.
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # libpq connection variables the integration tests read. The tests use
+      # dbname "postgres" and no explicit host/port/user, so they connect via
+      # these. Omit them and the 10 integration tests skip cleanly.
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the psql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        # `dev` is an optional-dependency extra, not a dependency-group, so
+        # plain `uv sync` does not install it. The `--extra dev` flag pulls in
+        # pytest and pytest-mock.
+        run: uv sync --extra dev
+
+      - name: Run tests against the live server
+        run: uv run pytest -ra --junitxml=pytest-report.xml
+
+      - name: Fail if any test was skipped
+        # The whole point of this workflow: the integration tests must run
+        # against the service, not skip. A green build that skipped 10 tests is
+        # a false success, so assert the skip count is zero from the report.
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse("pytest-report.xml").getroot()
+          suites = root.findall("testsuite")
+          skipped = sum(int(s.get("skipped", 0)) for s in suites)
+          tests = sum(int(s.get("tests", 0)) for s in suites)
+          if skipped:
+              raise SystemExit(
+                  f"{skipped} tests skipped — the PostgreSQL service was not used"
+              )
+          print(f"OK: {tests} tests, 0 skipped")
+          PY

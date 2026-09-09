@@ -145,11 +145,109 @@ the shell that launches your MCP client and leave it out of the JSON. The
 server only needs the variable to exist in its environment; it does not care
 who set it.
 
-`POSTGRES_MCP_CONFIG` matters when you run more than one instance. Pointing two
-entries at different config files gives you separate tool sets, so a staging
-server and a production server appear as distinct servers rather than as names
-in one list, and the production one can carry `--read-only` at the process level
-where a config typo cannot reach it.
+`POSTGRES_MCP_CONFIG` points the server at a specific config file, which is what
+lets you run more than one instance. See below.
+
+## Several environments
+
+Say you run MSS on both staging and production. You have two ways to set that
+up, and they differ in how much separation you get.
+
+### One config file
+
+Put both databases in `~/.config/postgres-mcp/config.toml` and tell them apart
+by name:
+
+```toml
+[defaults]
+read_only = true          # anything you forget to mark stays read-only
+
+[databases.mss_staging]
+host = "mss-staging.internal"
+port = 5432
+user = "app"
+dbname = "mss"
+password_env = "MSS_STAGING_PW"
+read_only = false
+
+[databases.mss_production]
+host = "mss-prod.internal"
+port = 5432
+user = "readonly_svc"
+dbname = "mss"
+sslmode = "require"
+password_env = "MSS_PROD_PW"
+read_only = true
+statement_timeout = "10s"
+max_rows = 200
+```
+
+One client entry, one file, and two `env` variables. Each database keeps its own
+mode and limits, so writes succeed against `mss_staging` and are refused against
+`mss_production`, and production gets a shorter timeout and a smaller row cap.
+
+The cost is that the assistant sees both databases in one list and chooses
+between them by name. Read-only on production means a wrong choice cannot damage
+data, though it can still pull production rows into a conversation you meant to
+keep on staging. Your naming convention is the only thing preventing that.
+
+### Two server instances
+
+Split the databases across two config files, `staging.toml` and `production.toml`,
+each holding one entry, then register both:
+
+```json
+{
+  "mcpServers": {
+    "mss-staging": {
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/azmym/postgres-mcp@v0.1.0",
+        "postgres-mcp"
+      ],
+      "env": {
+        "POSTGRES_MCP_CONFIG": "/Users/you/.config/postgres-mcp/staging.toml",
+        "MSS_STAGING_PW": "..."
+      }
+    },
+    "mss-production": {
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/azmym/postgres-mcp@v0.1.0",
+        "postgres-mcp", "--read-only"
+      ],
+      "env": {
+        "POSTGRES_MCP_CONFIG": "/Users/you/.config/postgres-mcp/production.toml",
+        "MSS_PROD_PW": "..."
+      }
+    }
+  }
+}
+```
+
+This buys three things the single file cannot. The environment is part of the
+tool name, so the assistant picks `mss-production` deliberately instead of
+picking a string out of a list. The production instance carries `--read-only` at
+the process level, where a mistake in the config file cannot reach it. And the
+production password exists only in the environment of the process that needs it,
+so a staging session never has it.
+
+You pay for that with two files and two client entries, and you cannot query
+staging and production in a single call.
+
+### Choosing
+
+Use one file while you are working on your own machine against data you can
+afford to break. Move to two instances once real production data is involved,
+because that is where the difference between picking the wrong name and being
+unable to pick it starts to matter.
+
+Either way, add a read-only role on production and point the config's `user` at
+it. That is the one layer that holds even if this server has a bug, and the SQL
+is below.
+
+Both scale past two databases. Adding MAS alongside MSS means four entries in
+one file, or four files across two instances grouped however you prefer.
 
 ## Tools
 

@@ -129,8 +129,8 @@ config file. `POSTGRES_MCP_READ_ONLY=1` does the same.
 ## How read-only is enforced
 
 Three independent layers, plus a fourth you should add yourself. The diagram
-above counts all four; this one shows what the three enforced layers actually
-check, including the keywords each one permits and blocks.
+above counts all four; this one shows what the three enforced layers check,
+including the keywords each one permits and blocks.
 
 ![The three enforced layers stacked as a shield. Layer one, the psql
 meta-command ban, blocks backslash commands to prevent shell execution and
@@ -195,9 +195,9 @@ Point `prod.user` at `mcp_reader` and a bug in this server still cannot write.
 
 ## Tests
 
-`tests/test_integration.py` runs against a real PostgreSQL server and skips
-cleanly when none is reachable. Point it at a server with the standard libpq
-variables:
+`tests/test_integration.py` runs against a real PostgreSQL server. When none is
+reachable it skips rather than failing. Point it at a server with the standard
+libpq variables:
 
 ```bash
 PGHOST=localhost PGUSER=admin PGPASSWORD=admin uv run pytest
@@ -223,12 +223,13 @@ The first failure you will hit is psql not being found. The server looks on
 each case. On macOS the usual cause is `brew install libpq` without
 `brew link --force`, which installs psql but leaves it off your PATH; the error
 tells you the exact `export PATH=...` line to add. Set `POSTGRES_MCP_PSQL` to
-skip the search entirely.
+skip the search.
 
 ## Contributing
 
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). The project
-is MIT-licensed ([LICENSE](LICENSE)).
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, the two test modes, and
+the conventions the code follows. The project is MIT-licensed
+([LICENSE](LICENSE)).
 
 Security is the whole point of this server, so [SECURITY.md](SECURITY.md) is
 worth reading: it documents the threat model, what counts as a vulnerability,

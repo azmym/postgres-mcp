@@ -210,7 +210,7 @@ def describe_schema(
 def test_connection(database: str | None = None) -> str:
     """Check psql and connectivity, for one database or all of them.
 
-    Reports the psql binary and version, the server version, the connected
+    Reports the path to the psql binary, the server version, the connected
     user, and each database's configured read-only or read-write mode. Omit
     `database` to check every configured entry, which also validates the
     config file.

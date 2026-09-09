@@ -1,15 +1,29 @@
 # postgres-mcp
 
-An MCP server that queries PostgreSQL through the `psql` command-line client.
-Configure as many databases as you like; mark any of them read-only and the
-model cannot talk its way out of it.
+An MCP server that lets an AI assistant run SQL against PostgreSQL through the
+`psql` command-line client. You configure several databases at once, and any of
+them can be marked read-only so that only read queries ever run against it.
+
+It exists for one reason: when you hand a model a database, you want the
+read-only guarantee to come from the server and from PostgreSQL itself, not
+from the model's good behaviour. A prompt-injection payload in a web page or a
+table comment cannot talk its way into a write.
+
+![Diagram of the three-layer read-only defence: layer one bans psql backslash
+commands so there is no shell or file access, layer two whitelists statement
+openers (SELECT, WITH, EXPLAIN and three more), layer three wraps every query in
+BEGIN READ ONLY so PostgreSQL itself refuses writes, with a fourth layer of a
+read-only database role.](assets/infographic.png)
 
 ## Requirements
 
 - Python 3.11 or newer
 - `psql` on your PATH
 
-Check with `psql --version`. If it is missing:
+`fastmcp` is the only runtime dependency; everything else is the standard
+library.
+
+Check for psql with `psql --version`. If it is missing:
 
 | Platform | Command |
 |---|---|
@@ -17,42 +31,21 @@ Check with `psql --version`. If it is missing:
 | macOS, full server | `brew install postgresql@18` |
 | Debian, Ubuntu | `sudo apt install postgresql-client` |
 | RHEL, Fedora | `sudo dnf install postgresql` |
+| Arch | `sudo pacman -S postgresql-libs` |
 | Windows | `scoop install postgresql`, or the EDB installer |
 
-`brew install libpq` is keg-only: without `brew link --force`, psql installs
-but stays off your PATH. `test_connection` detects that case and prints the
+`brew install libpq` is keg-only: without `brew link --force`, psql installs but
+stays off your PATH. `test_connection` detects that case and prints the
 `export PATH=...` line you need. You can also point the server at a specific
 binary with `POSTGRES_MCP_PSQL=/path/to/psql`.
 
 ## Install
 
 ```bash
-git clone <this repo> ~/workspace/postgres-mcp
-cd ~/workspace/postgres-mcp
+git clone https://github.com/azmym/postgres-mcp
+cd postgres-mcp
 uv venv && uv pip install -e ".[dev]"
-uv run pytest
 ```
-
-## Integration tests
-
-`tests/test_integration.py` runs against a real PostgreSQL server and skips
-cleanly when none is reachable. Point it at a server with the standard libpq
-variables:
-
-```bash
-PGHOST=localhost PGUSER=admin PGPASSWORD=admin uv run pytest
-```
-
-Or spin up a throwaway server with Docker:
-
-```bash
-docker run --rm -d --name pg-mcp-test \
-  -e POSTGRES_PASSWORD=admin -p 5432:5432 postgres:18
-PGHOST=localhost PGUSER=postgres PGPASSWORD=admin uv run pytest
-docker rm -f pg-mcp-test
-```
-
-Without a server the integration tests skip; the unit tests always run.
 
 ## Configure
 
@@ -75,13 +68,15 @@ port = 5432
 user = "readonly_svc"
 dbname = "app"
 sslmode = "require"
-password_env = "PROD_PG_PASSWORD"   # env var NAME, never the secret
+password_env = "PROD_PG_PASSWORD"   # the env var NAME, never the secret
 read_only = true
 ```
 
-Each entry takes either `dsn` or the discrete fields, not both. Passwords never
-go in this file: `password_env` names an environment variable, or use
-`~/.pgpass`.
+Each entry takes either `dsn` or the discrete fields (`host`, `port`, `user`,
+`dbname`, `sslmode`), not both. Passwords never go in this file: `password_env`
+names an environment variable, and `~/.pgpass` covers the rest. The password
+travels to psql in the child process's `PGPASSWORD` environment variable, never
+on the command line, because argv is visible to `ps`.
 
 Run `test_connection` with no arguments to validate the whole file at once.
 
@@ -111,30 +106,39 @@ config file. `POSTGRES_MCP_READ_ONLY=1` does the same.
 |---|---|
 | `list_databases` | Configured databases and their read-only status |
 | `execute_sql` | Run SQL, returns CSV |
-| `describe_schema` | Tables in a schema, or one table's columns and indexes |
-| `test_connection` | Verify psql and connectivity |
+| `describe_schema` | Tables in a schema, or one table's columns, constraints and indexes |
+| `test_connection` | Check psql and connectivity; reports the psql binary, server version, connected user, and each database's mode |
+
+`describe_schema` is always read-only, even against a writable database.
 
 ## How read-only is enforced
 
-Three independent layers:
+Three independent layers, plus a fourth you should add yourself.
 
-1. **psql meta-commands are always rejected.** `\!` runs shell commands and
-   `\copy` writes local files, so any statement opening with a backslash is
-   refused in both modes.
-2. **A statement gate** parses your SQL, ignoring comments and string
-   literals, and requires every statement to open with `SELECT`, `WITH`,
-   `EXPLAIN`, `SHOW`, `TABLE` or `VALUES` and to contain no `INSERT`,
-   `UPDATE`, `DELETE`, `MERGE` or `INTO` (`SELECT ... INTO` creates a table).
-   `WITH x AS (...) INSERT ...` is caught.
-   `EXPLAIN ANALYZE SELECT` is allowed; `EXPLAIN ANALYZE UPDATE` is not.
-3. **`BEGIN READ ONLY`** wraps the statements, so the server itself refuses
-   writes even if the gate were fooled.
+1. **Backslash commands are always rejected.** `\!` runs a shell command on
+   this host and never reaches the server, and `\copy` and `\o` write local
+   files, so any statement opening with a backslash is refused in both modes.
+2. **A statement gate** scrubs comments, string literals, quoted identifiers
+   and dollar-quoted bodies, then requires every statement to open with one of
+   six keywords: `SELECT`, `WITH`, `EXPLAIN`, `SHOW`, `TABLE` or `VALUES`. It
+   then scans for the write verbs `INSERT`, `UPDATE`, `DELETE`, `MERGE` and
+   `INTO` (`SELECT ... INTO` creates a table), so `WITH x AS (...) INSERT ...`
+   is caught even though it opens with an allowed keyword. `EXPLAIN ANALYZE
+   SELECT` is allowed; `EXPLAIN ANALYZE UPDATE` is not, because `ANALYZE`
+   executes its argument. `SELECT ... FOR UPDATE` and `FOR SHARE` are rejected
+   too, since they take row locks a read-only transaction refuses.
+3. **`BEGIN READ ONLY`** wraps the statements, so PostgreSQL itself refuses a
+   write even if the gate were fooled.
 
 No tool takes a `read_only` argument, so the model cannot escalate its own
-privileges: a prompt-injection payload in a web page or a table comment has no
-switch to flip.
+privileges. The switch lives in configuration, not in the request.
 
-### Recommended: a read-only role
+Read-only precedence, highest first: the `--read-only` flag or
+`POSTGRES_MCP_READ_ONLY=1`, then a per-database `read_only`, then
+`[defaults].read_only`, then a built-in default of `true`. The global switch
+can only tighten, never loosen.
+
+### A read-only role (recommended)
 
 The only layer that does not depend on this server's correctness is the
 database's own permissions:
@@ -152,13 +156,43 @@ Point `prod.user` at `mcp_reader` and a bug in this server still cannot write.
 
 ## Known limits
 
-- `SET` is rejected in read-only mode, so `search_path` cannot be changed.
-  Schema-qualify your tables, or use `describe_schema`.
-- `SELECT ... FOR UPDATE` and `FOR SHARE` are rejected in read-only mode: they
-  take row locks, which a read-only transaction refuses anyway.
-- `max_rows` truncates output after the query has run. No `LIMIT` is injected
-  into your SQL, so the reported total is the real one — add your own `LIMIT`
-  if the query itself is expensive.
-- NULL renders as `[NULL]` in query output, distinguishing it from an empty
-  string. A column whose literal text is `[NULL]` is therefore ambiguous with
-  a real NULL.
+- `SET` is not an allowed opener in read-only mode, so `search_path` cannot be
+  changed. Schema-qualify your tables, or use `describe_schema`.
+- Output is CSV, truncated by `max_rows` (default 1000) with a trailer naming
+  the real total, plus a 100 KB byte ceiling. No `LIMIT` is injected into your
+  SQL, so the reported total is the real one; add your own `LIMIT` if the query
+  itself is expensive.
+- NULL renders as `[NULL]` to distinguish it from an empty string. A column
+  whose literal text is `[NULL]` is therefore ambiguous with a real NULL.
+
+## Tests
+
+`tests/test_integration.py` runs against a real PostgreSQL server and skips
+cleanly when none is reachable. Point it at a server with the standard libpq
+variables:
+
+```bash
+PGHOST=localhost PGUSER=admin PGPASSWORD=admin uv run pytest
+```
+
+Or spin up a throwaway server with Docker:
+
+```bash
+docker run --rm -d --name pg-mcp-test \
+  -e POSTGRES_PASSWORD=admin -p 5432:5432 postgres:18
+PGHOST=localhost PGUSER=postgres PGPASSWORD=admin uv run pytest
+docker rm -f pg-mcp-test
+```
+
+Without a server the integration tests skip and the unit tests still run
+(151 passed, 10 skipped). Against a live server all 161 pass. Verified against
+PostgreSQL 18.6.
+
+## Troubleshooting
+
+The first failure you will hit is psql not being found. The server looks on
+`PATH`, then probes common install locations, and raises a specific message for
+each case. On macOS the usual cause is `brew install libpq` without
+`brew link --force`, which installs psql but leaves it off your PATH; the error
+tells you the exact `export PATH=...` line to add. Set `POSTGRES_MCP_PSQL` to
+skip the search entirely.

@@ -121,7 +121,10 @@ Or refer to your local directory
         "run", "--directory", "/absolute/path/to/postgres-mcp",
         "postgres-mcp", "--read-only"
       ],
-      "env": { "PROD_PG_PASSWORD": "..." }
+      "env": {
+        "POSTGRES_MCP_CONFIG": "/absolute/path/to/config.toml",
+        "PROD_PG_PASSWORD": "..."
+      }
     }
   }
 }
@@ -129,6 +132,24 @@ Or refer to your local directory
 
 `--read-only` forces every configured database read-only regardless of the
 config file. `POSTGRES_MCP_READ_ONLY=1` does the same.
+
+The `env` block needs one entry for every `password_env` your config declares.
+The example above shows one because the example config has one: `local`
+connects with a dsn and no password, and only `prod` names a variable. A config
+with four databases needs four entries, one per variable name.
+
+Writing the password here puts it in a second file on disk, which is what
+`password_env` was meant to avoid. Two ways around that: put the credentials in
+`~/.pgpass`, which psql reads without any variable, or export the variable in
+the shell that launches your MCP client and leave it out of the JSON. The
+server only needs the variable to exist in its environment; it does not care
+who set it.
+
+`POSTGRES_MCP_CONFIG` matters when you run more than one instance. Pointing two
+entries at different config files gives you separate tool sets, so a staging
+server and a production server appear as distinct servers rather than as names
+in one list, and the production one can carry `--read-only` at the process level
+where a config typo cannot reach it.
 
 ## Tools
 

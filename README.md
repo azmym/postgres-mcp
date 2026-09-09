@@ -182,14 +182,15 @@ statement_timeout = "10s"
 max_rows = 200
 ```
 
-One client entry, one file, and two `env` variables. Each database keeps its own
-mode and limits, so writes succeed against `mss_staging` and are refused against
-`mss_production`, and production gets a shorter timeout and a smaller row cap.
+You manage one file and one client entry. Each database keeps its own mode and
+limits, so a write against `mss_staging` goes through while the gate refuses the
+same statement against `mss_production`, which also runs on a shorter timeout and
+a smaller row cap.
 
-The cost is that the assistant sees both databases in one list and chooses
-between them by name. Read-only on production means a wrong choice cannot damage
-data, though it can still pull production rows into a conversation you meant to
-keep on staging. Your naming convention is the only thing preventing that.
+The assistant sees both databases in one list and picks between them by name.
+Read-only on production stops a wrong pick from damaging data, but it will still
+return production rows into a conversation you meant to keep on staging, and
+nothing enforces your naming convention.
 
 ### Two server instances
 
@@ -225,29 +226,27 @@ each holding one entry, then register both:
 }
 ```
 
-This buys three things the single file cannot. The environment is part of the
-tool name, so the assistant picks `mss-production` deliberately instead of
-picking a string out of a list. The production instance carries `--read-only` at
-the process level, where a mistake in the config file cannot reach it. And the
-production password exists only in the environment of the process that needs it,
-so a staging session never has it.
+The environment becomes part of the tool name, so the assistant selects
+`mss-production` as its own tool rather than pulling a string from a list. The
+production instance also carries `--read-only` at the process level, where a
+mistake in the config file cannot reach it, and its password lives only in that
+process's environment, so a staging session never holds it.
 
-You pay for that with two files and two client entries, and you cannot query
-staging and production in a single call.
+You pay two files and two client entries, and you lose the ability to query
+staging and production in one call.
 
 ### Choosing
 
-Use one file while you are working on your own machine against data you can
-afford to break. Move to two instances once real production data is involved,
-because that is where the difference between picking the wrong name and being
-unable to pick it starts to matter.
+Use one file while you work on your own machine against data you can afford to
+break. Move to two instances once production data is in reach, where the cost of
+the assistant picking the wrong name outweighs the cost of a second config file.
 
-Either way, add a read-only role on production and point the config's `user` at
-it. That is the one layer that holds even if this server has a bug, and the SQL
-is below.
+Either way, create a read-only role on production and point that entry's `user`
+at it. It holds even if this server has a bug, and the SQL is below.
 
-Both scale past two databases. Adding MAS alongside MSS means four entries in
-one file, or four files across two instances grouped however you prefer.
+Both approaches take more than two databases. Adding MAS alongside MSS gives you
+four entries in one file, or two files of two entries each if you split them by
+environment.
 
 ## Tools
 

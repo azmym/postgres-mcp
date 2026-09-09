@@ -96,7 +96,22 @@ on the command line, because argv is visible to `ps`.
 Run `test_connection` with no arguments to validate the whole file at once.
 
 ## Register with an MCP client
-
+Directly from GitHub repo 
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/azmym/postgres-mcp@v0.1.0",
+        "postgres-mcp", "--read-only"
+      ],
+      "env": { "PROD_PG_PASSWORD": "..." }
+    }
+  }
+}
+```
+Or refer to your local directory 
 ```json
 {
   "mcpServers": {

@@ -30,6 +30,26 @@ in the database rather than in this server. Underneath, a zero-escalation note:
 read-only status is fixed in configuration, so the model cannot escalate its
 own privileges.](assets/infographic.png)
 
+## Contents
+
+- [Requirements](#requirements)
+- [Install](#install)
+- [Configure](#configure)
+- [Register with an MCP client](#register-with-an-mcp-client)
+  - [Claude Code](#claude-code)
+  - [Flags and variables](#flags-and-variables)
+- [Several environments](#several-environments)
+  - [One config file](#one-config-file)
+  - [Two server instances](#two-server-instances)
+  - [Choosing](#choosing)
+- [Tools](#tools)
+- [How read-only is enforced](#how-read-only-is-enforced)
+  - [A read-only role](#a-read-only-role-recommended)
+- [Known limits](#known-limits)
+- [Tests](#tests)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+
 ## Requirements
 
 - Python 3.11 or newer

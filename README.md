@@ -130,6 +130,56 @@ Or refer to your local directory
 }
 ```
 
+### Claude Code
+
+Claude Code adds servers from the command line, so you do not edit JSON by hand:
+
+```bash
+claude mcp add postgres -s user \
+  --env POSTGRES_MCP_CONFIG=~/.config/postgres-mcp/config.toml \
+  -- uvx --from git+https://github.com/azmym/postgres-mcp@v0.1.0 postgres-mcp --read-only
+```
+
+Two details decide whether that command works.
+
+The `--` is required. Everything after it goes to the server process untouched.
+Leave it out and `claude mcp add` reads `--from` as one of its own flags, then
+fails.
+
+`-s user` registers the server for every project you open. The default is
+`local`, which limits it to the directory you run the command in. `-s project`
+writes the registration into that repository's `.mcp.json`, which commits it for
+everyone who works on the repo, so choose `project` only when the whole team
+should reach the same databases.
+
+The tilde works here because your shell expands it before `claude` sees the
+value. Nothing expands it inside a JSON file, so write an absolute path when you
+edit one by hand.
+
+That command produces this entry:
+
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/azmym/postgres-mcp@v0.1.0",
+        "postgres-mcp", "--read-only"
+      ],
+      "env": {
+        "POSTGRES_MCP_CONFIG": "/absolute/path/to/config.toml"
+      }
+    }
+  }
+}
+```
+
+Check it with `claude mcp list`, and use `claude mcp remove postgres -s user` to
+undo it.
+
+### Flags and variables
+
 `--read-only` forces every configured database read-only regardless of the
 config file. `POSTGRES_MCP_READ_ONLY=1` does the same.
 
